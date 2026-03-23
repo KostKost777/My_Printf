@@ -4,8 +4,8 @@ extern void MyPrintf(const char* str, ...);
 
 int main()
 {
-    printf("Input %d\n\n", 123123);
-    MyPrintf("%d %d %d %d %d %d %d\n", 1, 2, 3, 4, 5123, 6123, 7213);
+    printf("MY   bin is: %b\n", 2342424324);
+    MyPrintf("Your bin is: %b\n", 2342424324);
 
     return 0;
 }
