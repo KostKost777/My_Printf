@@ -87,6 +87,7 @@ MyPrintf:
 ; Портит: rcx, rdx
 ;-----------------------------------------------------------------------
 GetNextArg:
+                xor rdx, rdx
 
                 cmp rcx, 5
                 jae stack_arg
@@ -388,6 +389,29 @@ DecSpecifier:
 
                 call GetNextArg
 
+                movsxd  rdx, edx
+                test rdx, rdx
+                jns .positive
+
+                mov byte [buffer], '-'
+
+                push rdx
+                push rcx
+                push r11
+
+                mov rax, 1
+                mov rdi, 1
+                mov rsi, buffer
+                mov rdx, 1                     
+                syscall
+
+                pop r11
+                pop rcx
+                pop rdx
+
+                neg rdx
+
+.positive:
                 push rcx
                 xor rcx, rcx
 
@@ -509,7 +533,7 @@ PercSpecifier:
                 
 section .data
 
-buffer          db 0
+buffer          db 512 dup(0)
 
 arg_jmp_table:
                 dq first_arg
@@ -517,5 +541,3 @@ arg_jmp_table:
                 dq third_arg
                 dq forth_arg
                 dq fifth_arg
-
-
