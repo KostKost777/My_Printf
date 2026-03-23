@@ -2,7 +2,6 @@ section .text
 
 global MyPrintf
 
-hex_mask            equ (0fh << 60)
 oct_mask            equ (0111b)
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
@@ -182,8 +181,15 @@ stack_arg:
                 ret
 
 .not_bin_spec:
-                
+
+                cmp al, '%'
+                jne .not_perc_spec
+                call PercSpecifier
                 inc r10
+                ret
+
+.not_perc_spec:
+                
                 ret
 
 
@@ -282,38 +288,41 @@ HexSpecifier:
 
                 call GetNextArg
 
-                mov rax, hex_mask
-.skip_zero:
-                test rdx, 0h
-                je .end_skip_zero
+                push rcx
+                xor rcx, rcx
 
-                test rdx, rax
-                jnz .end_skip_zero
+.parse_hex_loop:
+                xor rax, rax
+                mov al, dl
+                and al, 0fh
 
-                shl rdx, 4
-                jmp .skip_zero
-
-.end_skip_zero:
-
-.print_hex_loop:
-                push rdx
-
-                mov rax, hex_mask
-                and rdx, rax
-                shr rdx, 60
-
-                cmp rdx, 0ah
+                cmp rax, 0ah
                 jae .parse_verb
 
-                add rdx, '0'
+                add rax, '0'
                 jmp .end_parse_digit
 
 .parse_verb:
-                add rdx, 'A' - 10
+                add rax, 'A' - 10
 
 .end_parse_digit:
 
-                mov [buffer], rdx
+                push rax
+                inc rcx
+                shr rdx, 4
+
+                cmp rdx, 0h
+                je .end_hex_loop
+
+                jmp .parse_hex_loop
+
+.end_hex_loop:
+
+
+.print_hex:
+                pop rax 
+                mov [buffer], al
+
                 push rcx
                 push r11
 
@@ -326,16 +335,9 @@ HexSpecifier:
                 pop r11
                 pop rcx
 
-                pop rdx
+                loop .print_hex
 
-                shl rdx, 4
-
-                cmp rdx, 0h
-                je .end_hex_loop
-
-                jmp .print_hex_loop
-
-.end_hex_loop:
+                pop rcx
 
                 pop rdx
                 pop rsi
@@ -523,6 +525,39 @@ BinSpecifier:
 
                 loop .print_bin
 
+                pop rcx
+
+                pop rdx
+                pop rsi
+                pop rdi
+                pop rax
+
+                ret
+
+;-----------------------------------------------------------------------
+; Функция обработки спецификатора символа (%%) в printf
+; Входные данные: -
+; Выходные данные: -
+; Портит: -
+;-----------------------------------------------------------------------
+PercSpecifier:
+                push rax            ;сохраняем чтобы можно было юзать syscall
+                push rdi
+                push rsi
+                push rdx
+
+                push rcx
+                push r11
+
+                mov byte [buffer], '%'
+
+                mov rax, 1
+                mov rdi, 1
+                mov rsi, buffer
+                mov rdx, 1                     
+                syscall
+
+                pop r11
                 pop rcx
 
                 pop rdx
