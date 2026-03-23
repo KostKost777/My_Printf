@@ -166,6 +166,14 @@ stack_arg:
                 ret
 
 .not_oct_spec:
+
+                cmp al, 'd'
+                jne .not_dec_spec
+                call DecSpecifier
+                inc r10
+                ret
+
+.not_dec_spec:
                 
                 inc r10
                 ret
@@ -367,7 +375,7 @@ OctSpecifier:
 .print_oct:
                 pop rax 
                 mov [buffer], al
-                
+
                 push rcx
                 push r11
 
@@ -381,6 +389,70 @@ OctSpecifier:
                 pop rcx
 
                 loop .print_oct
+
+                pop rcx
+
+                pop rdx
+                pop rsi
+                pop rdi
+                pop rax
+
+                ret
+
+;-----------------------------------------------------------------------
+; Функция обработки спецификатора строки (%o) в printf
+; Входные данные: rcx - номер аргумента для вывода
+; Выходные данные: -
+; Портит: rcx
+;-----------------------------------------------------------------------
+DecSpecifier:
+                push rax            ;сохраняем чтобы можно было юзать syscall
+                push rdi
+                push rsi
+
+                push rdx
+
+                call GetNextArg
+
+                push rcx
+                xor rcx, rcx
+
+.parse_dec:
+                mov rax, rdx
+                xor rdx, rdx
+                mov rbx, 10
+                div rbx
+
+                add rdx, '0'
+                push rdx
+                inc rcx
+
+                mov rdx, rax
+
+                cmp rdx, 0h
+                je .end_parse_dec
+
+                jmp .parse_dec
+
+.end_parse_dec:
+
+.print_dec:
+                pop rax 
+                mov [buffer], al
+                
+                push rcx
+                push r11
+
+                mov rax, 1
+                mov rdi, 1
+                mov rsi, buffer
+                mov rdx, 1                     
+                syscall
+
+                pop r11
+                pop rcx
+
+                loop .print_dec
 
                 pop rcx
 
