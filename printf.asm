@@ -13,6 +13,9 @@ MyPrintf:
                 push rbp
                 mov rbp, rsp
                 
+                push rax            ;сохраняем чтобы можно было юзать syscall
+                push rdi
+                push rsi
                 push r10
                 push r11
                 push r12
@@ -62,6 +65,9 @@ MyPrintf:
                 pop r12
                 pop r11
                 pop r10
+                pop rsi
+                pop rdi
+                pop rax
 
                 pop rbp
 
@@ -197,14 +203,10 @@ stack_arg:
 ; Функция обработки спецификатора строки (%s) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 StringSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
 
-                push rdx
                 call GetNextArg
 
 .print_str_loop:
@@ -232,24 +234,15 @@ StringSpecifier:
 
 .end_print_str:
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора символа (%c) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 CharSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-                push rdx
 
                 call GetNextArg
 
@@ -267,24 +260,15 @@ CharSpecifier:
                 pop r11
                 pop rcx
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора 16-ричного числа (%x) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 HexSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-                push rdx
 
                 call GetNextArg
 
@@ -339,25 +323,15 @@ HexSpecifier:
 
                 pop rcx
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора восьмиричного числа (%o) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 OctSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-
-                push rdx
 
                 call GetNextArg
 
@@ -402,25 +376,15 @@ OctSpecifier:
 
                 pop rcx
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора десятичного числа (%d) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 DecSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-
-                push rdx
 
                 call GetNextArg
 
@@ -466,25 +430,15 @@ DecSpecifier:
 
                 pop rcx
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора двоичного числа (%b) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rcx
+; Портит: rdx, rax, rdi, rsi
 ;-----------------------------------------------------------------------
 BinSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-
-                push rdx
 
                 call GetNextArg
 
@@ -527,24 +481,15 @@ BinSpecifier:
 
                 pop rcx
 
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
-
                 ret
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора символа (%%) в printf
 ; Входные данные: -
 ; Выходные данные: -
-; Портит: -
+; Портит: rax, rdi, rsi
 ;-----------------------------------------------------------------------
 PercSpecifier:
-                push rax            ;сохраняем чтобы можно было юзать syscall
-                push rdi
-                push rsi
-                push rdx
 
                 push rcx
                 push r11
@@ -559,11 +504,6 @@ PercSpecifier:
 
                 pop r11
                 pop rcx
-
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
 
                 ret
                 
