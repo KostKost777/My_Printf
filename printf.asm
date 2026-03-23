@@ -2,6 +2,8 @@ section .text
 
 global MyPrintf
 
+hex_mask            equ (0fh << 60)
+oct_mask            equ (0111b)
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
 ; Входные данные:  rdi, rsi, rdx, rcx, r8, r9, +стек
@@ -156,6 +158,14 @@ stack_arg:
                 ret
 
 .not_hex_spec:
+
+                cmp al, 'o'
+                jne .not_oct_spec
+                call OctSpecifier
+                inc r10
+                ret
+
+.not_oct_spec:
                 
                 inc r10
                 ret
@@ -253,27 +263,26 @@ HexSpecifier:
                 push rdi
                 push rsi
                 push rdx
-                push rax
 
                 call GetNextArg
 
-                mov rax, 0f000000000000000h
-
+                mov rax, hex_mask
 .skip_zero:
+                test rdx, 0h
+                je .end_skip_zero
+
                 test rdx, rax
                 jnz .end_skip_zero
+
                 shl rdx, 4
                 jmp .skip_zero
 
 .end_skip_zero:
 
 .print_hex_loop:
-                cmp rdx, 0h
-                je .end_hex_str
-
                 push rdx
-                
-                mov rax, 0f000000000000000h
+
+                mov rax, hex_mask
                 and rdx, rax
                 shr rdx, 60
 
@@ -305,11 +314,76 @@ HexSpecifier:
 
                 shl rdx, 4
 
+                cmp rdx, 0h
+                je .end_hex_loop
+
                 jmp .print_hex_loop
 
-.end_hex_str:
+.end_hex_loop:
 
+                pop rdx
+                pop rsi
+                pop rdi
                 pop rax
+
+                ret
+
+;-----------------------------------------------------------------------
+; Функция обработки спецификатора строки (%o) в printf
+; Входные данные: rcx - номер аргумента для вывода
+; Выходные данные: -
+; Портит: rcx
+;-----------------------------------------------------------------------
+OctSpecifier:
+                push rax            ;сохраняем чтобы можно было юзать syscall
+                push rdi
+                push rsi
+
+                push rdx
+
+                call GetNextArg
+
+                push rcx
+                xor rcx, rcx
+
+.parse_oct:
+                xor rax, rax
+
+                mov al, dl
+                and al, oct_mask
+                add rax, '0'
+                push rax
+                inc rcx
+
+                shr rdx, 3
+
+                cmp rdx, 0h
+                je .end_parse_oct
+
+                jmp .parse_oct
+
+.end_parse_oct:
+
+.print_oct:
+                pop rax 
+                mov [buffer], al
+                
+                push rcx
+                push r11
+
+                mov rax, 1
+                mov rdi, 1
+                mov rsi, buffer
+                mov rdx, 1                     
+                syscall
+
+                pop r11
+                pop rcx
+
+                loop .print_oct
+
+                pop rcx
+
                 pop rdx
                 pop rsi
                 pop rdi
