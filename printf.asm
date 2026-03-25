@@ -3,7 +3,6 @@ section .text
 global MyPrintf
 
 oct_mask          equ (0111b)
-
 precision         equ 1000000
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
@@ -13,7 +12,7 @@ precision         equ 1000000
 ;-----------------------------------------------------------------------
 MyPrintf:
                 push rbp
-                mov rbp, rsp            ;адрес начала аргументов с порядковым номером больше 6
+                mov rbp, rsp                ;адрес начала аргументов с порядковым номером больше 6
 
                 sub rsp, 16 * 8
 
@@ -43,7 +42,6 @@ MyPrintf:
                 xor r13, r13        ;порядковый номер не стековых аргументов всех типов кроме float
                 xor rcx, rcx        ;общее число обработанных аргументов
                 
-
 .write_loop:
                 mov al, [r10]               ;в al будем хранить текущей символ из форматной строки
                 cmp al, 0
@@ -74,8 +72,9 @@ MyPrintf:
 
                 mov rax, rdx
 
-                add rsp, 168           ;пропускаем все аргументы
+                add rsp, 162             ;пропускаем все аргументы
 
+                mov rsp, rbp
                 pop rbp
 
                 ret
@@ -139,76 +138,15 @@ GetNextArg:
 ; Портит: r10, rax
 ;-----------------------------------------------------------------------
  ChooseSpecifier:
-
                 inc r10
                 mov al, [r10]
-
-                cmp al, 's'
-                jne .not_str_spec
-                call StringSpecifier
                 inc r10
+
+                movzx rax, al
+                jmp [jump_table + rax * 8]
+
+default_case:              
                 ret
-
-.not_str_spec:
-
-                cmp al, 'c'
-                jne .not_char_spec
-                call CharSpecifier
-                inc r10
-                ret
-
-.not_char_spec:
-
-                cmp al, 'x'
-                jne .not_hex_spec
-                call HexSpecifier
-                inc r10
-                ret
-
-.not_hex_spec:
-
-                cmp al, 'o'
-                jne .not_oct_spec
-                call OctSpecifier
-                inc r10
-                ret
-
-.not_oct_spec:
-
-                cmp al, 'd'
-                jne .not_dec_spec
-                call DecSpecifier
-                inc r10
-                ret
-
-.not_dec_spec:
-
-                cmp al, 'b'
-                jne .not_bin_spec
-                call BinSpecifier
-                inc r10
-                ret
-
-.not_bin_spec:
-
-                cmp al, '%'
-                jne .not_perc_spec
-                call PercSpecifier
-                inc r10
-                ret
-
-.not_perc_spec:
-
-                cmp al, 'f'
-                jne .not_double_spec
-                call DoubleSpecifier
-                inc r10
-                ret
-
-.not_double_spec:
-                
-                ret
-
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора строки (%s) в printf
@@ -366,37 +304,7 @@ DecSpecifier:
                 neg rdx
 
 .positive:
-                push rcx
-                xor rcx, rcx
-
-.parse_dec:
-                mov rax, rdx
-                xor rdx, rdx
-                mov rbx, 10
-                div rbx
-
-                add rdx, '0'
-                push rdx
-                inc rcx
-
-                mov rdx, rax
-
-                cmp rdx, 0h
-                je .end_parse_dec
-
-                jmp .parse_dec
-
-.end_parse_dec:
-
-.print_dec:
-                pop rax 
-                
-                mov [r14], al
-                inc r14
-
-                loop .print_dec
-
-                pop rcx
+                call ParseDec
 
                 ret
 
@@ -469,40 +377,11 @@ DoubleSpecifier:
 .positive:
                 
                 cvttsd2si rdx, xmm0
-                push rdx
 
-                xor rcx, rcx
-.parse_dec_int:
-                mov rax, rdx
-                xor rdx, rdx
-                mov rbx, 10
-                div rbx
-
-                add rdx, '0'
-                push rdx
-                inc rcx
-
-                mov rdx, rax
-
-                cmp rdx, 0h
-                je .end_parse_int
-
-                jmp .parse_dec_int
-
-.end_parse_int:
-
-.print_dec_int:
-                pop rax 
-                
-                mov [r14], al
-                inc r14
-
-                loop .print_dec_int
+                call ParseDec
 
                 mov byte [r14], '.'
                 inc r14
-
-                pop rdx
                 
                 cvtsi2sd xmm1, rdx    ; преобразуем целую часть в double
                 subsd xmm0, xmm1  
@@ -514,9 +393,31 @@ DoubleSpecifier:
                 roundsd xmm0, xmm0, 0
                 cvttsd2si rdx, xmm0
 
-                xor rcx, rcx
+                call ParseDec
 
-.parse_dec_rem:
+                pop rcx
+                pop rbx
+                pop rax
+
+                ret
+
+
+;-----------------------------------------------------------------------
+; Функция перевода из 16 ричного числа  в rdx в 10-ое и сохранение в буфер в r14
+; Входные данные: rdx - число в 16 ричной форме
+;                 r14 - буффер для вывода
+; Выходные данные: -
+; Портит: -
+;-----------------------------------------------------------------------
+ParseDec:
+
+                push rax
+                push rdx
+                push rcx
+                push rbx
+
+                xor rcx, rcx
+.parse_dec:
                 mov rax, rdx
                 xor rdx, rdx
                 mov rbx, 10
@@ -529,23 +430,23 @@ DoubleSpecifier:
                 mov rdx, rax
 
                 cmp rdx, 0h
-                je .end_parse_rem
+                je .end_parse_dec
 
-                jmp .parse_dec_rem
+                jmp .parse_dec
 
-.end_parse_rem:
+.end_parse_dec:
 
-.print_dec_rem:
+.print_dec:
                 pop rax 
                 
                 mov [r14], al
                 inc r14
 
-                loop .print_dec_rem
+                loop .print_dec
 
-
-                pop rcx
                 pop rbx
+                pop rcx
+                pop rdx
                 pop rax
 
                 ret
@@ -566,3 +467,18 @@ PercSpecifier:
 section .data
 
 buffer          db 512 dup(0)
+
+jump_table:
+    times ('b' - 0)             dq default_case                          ;0 - 'b'
+                                dq BinSpecifier                     ;b
+                                dq CharSpecifier                    ;c
+                                dq DecSpecifier                     ;d
+                                dq default_case                          ;e - skip
+                                dq DoubleSpecifier                  ;f
+    times ('o' - 'f' - 1)       dq default_case                          ; skip между f и o
+                                dq OctSpecifier                     ; o
+    times ('s' - 'o' - 1)       dq default_case                          ;skip между o и s
+                                dq StringSpecifier                  ;s
+    times ('x' - 's' - 1)       dq default_case                          ; skip между x и s
+                                dq HexSpecifier                     ;x
+    times (256 - 'x' + 1)       dq default_case                          ; все остальные возможные
