@@ -6,7 +6,7 @@ extern int MyPrintf(const char* str, ...);
 int main()
 {
 
-    MyPrintf("%f %f %d %d %d %d %d %d %d \n", 1.2, 1.2, 1, 1, 1, 1, 1, 1, 1);
+    MyPrintf("%f %f %d %d %d %d %d %d %d \n", NAN, INFINITY , 1, 1, 1, 1, 1, 1, 1);
 
      MyPrintf("Test\n %s - %s\n Это число во всех СС - %f \n "
               "(16) - %x \n (10) - %d \n (10) - %d \n (10) - %d \n Po procolu %c%%\n%f\n%s  %f\n"

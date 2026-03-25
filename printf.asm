@@ -5,6 +5,8 @@ extern printf
 
 oct_mask          equ (0111b)
 precision         equ 1000000
+dbl_exp_mask      equ 0x7ff0000000000000
+dbl_mant_mask     equ 0x000fffffffffffff
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
 ; Входные данные:  rdi, rsi, rdx, rcx, r8, r9, +стек
@@ -327,7 +329,7 @@ DecSpecifier:
                 neg rdx
 
 .positive:
-                call ParseDec
+                call ParseInDec
 
                 ret
 
@@ -379,10 +381,6 @@ BinSpecifier:
 ; Портит: rax, rdi, rsi
 ;-----------------------------------------------------------------------
 DoubleSpecifier:
-
-                push rax
-                push rbx
-
                 call GetNextArg
 
                 push rcx
@@ -391,17 +389,50 @@ DoubleSpecifier:
                 jnz .positive
 
                 mov byte [r14], '-'
+                inc r14             
+.positive:
+                mov r8, rdx
+                mov r9, rdx
+
+                mov rax, dbl_mant_mask
+                and r9, rax
+
+                mov rax, dbl_exp_mask
+                and r8, rax                     ; оставляем 11 бит экспоненты
+
+                cmp r8, rax
+                jne .norm
+
+                cmp r9, 0
+                jne .is_nan
+
+                mov byte [r14], 'I'
+                inc r14
+                mov byte [r14], 'N'
+                inc r14
+                mov byte [r14], 'F'
                 inc r14
 
-                xorps xmm0, xmm0
-                xorps xmm1, xmm1
+                pop rcx
 
+                ret
+.is_nan:
+                mov byte [r14], 'N'
+                inc r14
+                mov byte [r14], 'A'
+                inc r14
+                mov byte [r14], 'N'
+                inc r14
+
+                pop rcx
+                
+                ret
+.norm:
                 movq xmm0, rdx
-.positive:
                 
                 cvttsd2si rdx, xmm0
 
-                call ParseDec
+                call ParseInDec
 
                 mov byte [r14], '.'
                 inc r14
@@ -416,15 +447,11 @@ DoubleSpecifier:
                 roundsd xmm0, xmm0, 0
                 cvttsd2si rdx, xmm0
 
-                call ParseDec
+                call ParseInDec
 
                 pop rcx
-                pop rbx
-                pop rax
 
                 ret
-
-
 ;-----------------------------------------------------------------------
 ; Функция перевода из 16 ричного числа  в rdx в 10-ое и сохранение в буфер в r14
 ; Входные данные: rdx - число в 16 ричной форме
@@ -432,7 +459,7 @@ DoubleSpecifier:
 ; Выходные данные: -
 ; Портит: -
 ;-----------------------------------------------------------------------
-ParseDec:
+ParseInDec:
 
                 push rax
                 push rdx
