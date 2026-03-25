@@ -2,7 +2,9 @@ section .text
 
 global MyPrintf
 
-oct_mask            equ (0111b)
+oct_mask          equ (0111b)
+
+precision         equ 1000000
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
 ; Входные данные:  rdi, rsi, rdx, rcx, r8, r9, +стек
@@ -16,16 +18,16 @@ MyPrintf:
                 sub rsp, 16 * 8
 
                 lea r11, [rsp - 8]          ;адрес начала первых 5 аргументов
-                lea r15, [rbp - 16]         ;адрес начала первых 8 float аогументов
+                lea r15, [rsp]              ;адрес начала первых 8 float аогументов
 
-                movdqu [rsp],       xmm7
-                movdqu [rsp + 16],  xmm6
-                movdqu [rsp + 32],  xmm5
-                movdqu [rsp + 48],  xmm4
-                movdqu [rsp + 64],  xmm3
-                movdqu [rsp + 80],  xmm2
-                movdqu [rsp + 96],  xmm1
-                movdqu [rsp + 112], xmm0
+                movdqu [rsp],       xmm0
+                movdqu [rsp + 16],  xmm1
+                movdqu [rsp + 32],  xmm2
+                movdqu [rsp + 48],  xmm3
+                movdqu [rsp + 64],  xmm4
+                movdqu [rsp + 80],  xmm5
+                movdqu [rsp + 96],  xmm6
+                movdqu [rsp + 112], xmm7
       
                 push rsi
                 push rdx
@@ -94,8 +96,9 @@ GetNextArg:
                 cmp r12, 8
                 jae .stack_arg
 
-                mov rdx, [r15]
-                sub r15, 16
+                movdqu xmm0, [r15]
+                movq rdx, xmm0 
+                add r15, 16
 
                 inc rcx
                 inc r12
@@ -124,6 +127,7 @@ GetNextArg:
                 mov rdx, [rcx]
 
                 pop rcx
+
                 inc rcx
 
                 ret
@@ -196,12 +200,12 @@ GetNextArg:
 .not_perc_spec:
 
                 cmp al, 'f'
-                jne .not_float_spec
-                ;call FloatSpecifier
+                jne .not_double_spec
+                call DoubleSpecifier
                 inc r10
                 ret
 
-.not_float_spec:
+.not_double_spec:
                 
                 ret
 
@@ -434,6 +438,115 @@ BinSpecifier:
                 loop .print_bin
 
                 pop rcx
+
+                ret
+
+;-----------------------------------------------------------------------
+; Функция обработки спецификатора символа (%f) в printf
+; Входные данные: -
+; Выходные данные: -
+; Портит: rax, rdi, rsi
+;-----------------------------------------------------------------------
+DoubleSpecifier:
+
+                push rax
+                push rbx
+
+                call GetNextArg
+
+                push rcx
+
+                test rdx, rdx
+                jnz .positive
+
+                mov byte [r14], '-'
+                inc r14
+
+                xorps xmm0, xmm0
+                xorps xmm1, xmm1
+
+                movq xmm0, rdx
+.positive:
+                
+                cvttsd2si rdx, xmm0
+                push rdx
+
+                xor rcx, rcx
+.parse_dec_int:
+                mov rax, rdx
+                xor rdx, rdx
+                mov rbx, 10
+                div rbx
+
+                add rdx, '0'
+                push rdx
+                inc rcx
+
+                mov rdx, rax
+
+                cmp rdx, 0h
+                je .end_parse_int
+
+                jmp .parse_dec_int
+
+.end_parse_int:
+
+.print_dec_int:
+                pop rax 
+                
+                mov [r14], al
+                inc r14
+
+                loop .print_dec_int
+
+                mov byte [r14], '.'
+                inc r14
+
+                pop rdx
+                
+                cvtsi2sd xmm1, rdx    ; преобразуем целую часть в double
+                subsd xmm0, xmm1  
+
+                mov rax, precision
+                cvtsi2sd xmm1, rax
+
+                mulsd xmm0, xmm1
+                roundsd xmm0, xmm0, 0
+                cvttsd2si rdx, xmm0
+
+                xor rcx, rcx
+
+.parse_dec_rem:
+                mov rax, rdx
+                xor rdx, rdx
+                mov rbx, 10
+                div rbx
+
+                add rdx, '0'
+                push rdx
+                inc rcx
+
+                mov rdx, rax
+
+                cmp rdx, 0h
+                je .end_parse_rem
+
+                jmp .parse_dec_rem
+
+.end_parse_rem:
+
+.print_dec_rem:
+                pop rax 
+                
+                mov [r14], al
+                inc r14
+
+                loop .print_dec_rem
+
+
+                pop rcx
+                pop rbx
+                pop rax
 
                 ret
 
