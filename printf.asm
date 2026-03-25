@@ -11,27 +11,36 @@ oct_mask            equ (0111b)
 ;-----------------------------------------------------------------------
 MyPrintf:
                 push rbp
-                mov rbp, rsp              
-                                ;сохраняем чтобы можно было юзать syscall
-                push rdi
+                mov rbp, rsp            ;адрес начала аргументов с порядковым номером больше 6
+
+                sub rsp, 16 * 8
+
+                lea r11, [rsp - 8]          ;адрес начала первых 5 аргументов
+                lea r15, [rbp - 16]         ;адрес начала первых 8 float аогументов
+
+                movdqu [rsp],       xmm7
+                movdqu [rsp + 16],  xmm6
+                movdqu [rsp + 32],  xmm5
+                movdqu [rsp + 48],  xmm4
+                movdqu [rsp + 64],  xmm3
+                movdqu [rsp + 80],  xmm2
+                movdqu [rsp + 96],  xmm1
+                movdqu [rsp + 112], xmm0
+      
                 push rsi
-                push r10
-                push r11
-                push r12
-                push r13
-                push r14
+                push rdx
+                push rcx
+                push r8
+                push r9
 
-                mov r14, buffer
+                mov r10, rdi                ; форматная строка 
 
-                mov r10, rdi                ;форматная строка
-                mov r11, rsi                ;1 аргумент
-                mov r12, rdx                ;2 аргумент
-                mov r13, rcx                ;3 аргумент
-                                            ;r8 - 4
-                                            ;r9 - 5
-                                            ;остальное в стеке начиная с rbp + 16
+                mov r14, buffer             ;адрес буфера вывода
 
-                xor rcx, rcx                ;в нем будет храниться порядковый номер аргумента
+                xor r12, r12        ;порядковый номер не стековых аргументов типа float
+                xor r13, r13        ;порядковый номер не стековых аргументов всех типов кроме float
+                xor rcx, rcx        ;общее число обработанных аргументов
+                
 
 .write_loop:
                 mov al, [r10]               ;в al будем хранить текущей символ из форматной строки
@@ -63,13 +72,7 @@ MyPrintf:
 
                 mov rax, rdx
 
-                pop r14
-                pop r13
-                pop r12
-                pop r11
-                pop r10
-                pop rsi
-                pop rdi
+                add rsp, 168           ;пропускаем все аргументы
 
                 pop rbp
 
@@ -78,58 +81,51 @@ MyPrintf:
 ;-----------------------------------------------------------------------
 ; Функция для получания аргумента под номером rax, сохраняет в rax
 ; Входные данные: rcx - порядковый номер элемента
-; Аргументы должны лежать в таком порядке:
-; 1 - r11
-; 2 - r12
-; 3 - r13
-; 4 - r8
-; 5 - r9
-; отсальные - из стека начиная с rbp + 16
+;                 al  - символ спецификатора
 ; Выходные данные: rdx - сам аргумент
-; Портит: rcx, rdx
+; Портит: r12, r13, rcx, rdx
 ;-----------------------------------------------------------------------
 GetNextArg:
                 xor rdx, rdx
 
-                cmp rcx, 5
-                jae stack_arg
+                cmp al, 'f'
+                jne .not_float
 
-                jmp [arg_jmp_table + rcx * 8]
+                cmp r12, 8
+                jae .stack_arg
 
-first_arg:
-                mov rdx, r11
+                mov rdx, [r15]
+                sub r15, 16
+
                 inc rcx
+                inc r12
+
                 ret
 
-second_arg:
-                mov rdx, r12
+.not_float:
+                cmp r13, 5
+                jae .stack_arg
+
+                mov rdx, [r11]
+                sub r11, 8
+
                 inc rcx
+                inc r13
+
                 ret
 
-third_arg:
-                mov rdx, r13
-                inc rcx
-                ret
-
-forth_arg:
-                mov rdx, r8
-                inc rcx
-                ret
-
-fifth_arg:
-                mov rdx, r9
-                inc rcx
-                ret
-
-stack_arg:     
+.stack_arg:     
                 push rcx
-                sub rcx, 5h
+
+                sub rcx, r12
+                sub rcx, r13
 
                 lea rcx, [rbp + rcx * 8 + 16]
                 mov rdx, [rcx]
 
                 pop rcx
                 inc rcx
+
                 ret
 
 ;-----------------------------------------------------------------------
@@ -198,6 +194,14 @@ stack_arg:
                 ret
 
 .not_perc_spec:
+
+                cmp al, 'f'
+                jne .not_float_spec
+                ;call FloatSpecifier
+                inc r10
+                ret
+
+.not_float_spec:
                 
                 ret
 
@@ -328,7 +332,6 @@ OctSpecifier:
 
 .print_oct:
                 pop rax 
-                mov [buffer], al
 
                 mov [r14], al
                 inc r14
@@ -424,7 +427,6 @@ BinSpecifier:
 
 .print_bin:
                 pop rax 
-                mov [buffer], al
                 
                 mov [r14], al
                 inc r14
@@ -451,10 +453,3 @@ PercSpecifier:
 section .data
 
 buffer          db 512 dup(0)
-
-arg_jmp_table:
-                dq first_arg
-                dq second_arg
-                dq third_arg
-                dq forth_arg
-                dq fifth_arg
