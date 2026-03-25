@@ -1,6 +1,7 @@
 section .text
 
 global MyPrintf
+extern printf
 
 oct_mask          equ (0111b)
 precision         equ 1000000
@@ -17,7 +18,7 @@ MyPrintf:
                 sub rsp, 16 * 8
 
                 lea r11, [rsp - 8]          ;адрес начала первых 5 аргументов
-                lea r15, [rsp]              ;адрес начала первых 8 float аогументов
+                lea r15, [rsp]              ;адрес начала первых 8 float аргументов
 
                 movdqu [rsp],       xmm0
                 movdqu [rsp + 16],  xmm1
@@ -33,17 +34,18 @@ MyPrintf:
                 push rcx
                 push r8
                 push r9
+                push rdi
 
-                mov r10, rdi                ; форматная строка 
+                mov r10, rdi            ; форматная строка 
 
-                mov r14, buffer             ;адрес буфера вывода
+                mov r14, buffer         ;адрес буфера вывода
 
-                xor r12, r12        ;порядковый номер не стековых аргументов типа float
-                xor r13, r13        ;порядковый номер не стековых аргументов всех типов кроме float
-                xor rcx, rcx        ;общее число обработанных аргументов
+                xor r12, r12            ;порядковый номер не стековых аргументов типа float
+                xor r13, r13            ;порядковый номер не стековых аргументов всех типов кроме float
+                xor rcx, rcx            ;общее число обработанных аргументов
                 
 .write_loop:
-                mov al, [r10]               ;в al будем хранить текущей символ из форматной строки
+                mov al, [r10]           ;в al будем хранить текущей символ из форматной строки
                 cmp al, 0
                 je .end_write_loop
 
@@ -72,11 +74,32 @@ MyPrintf:
 
                 mov rax, rdx
 
-                add rsp, 162             ;пропускаем все аргументы
+                pop rdi
+                pop r9
+                pop r8
+                pop rcx
+                pop rdx
+                pop rsi
+
+                movdqu xmm0, [rsp]     
+                movdqu xmm1, [rsp + 16]
+                movdqu xmm2, [rsp + 32]
+                movdqu xmm3, [rsp + 48]
+                movdqu xmm4, [rsp + 64]
+                movdqu xmm5, [rsp + 80]
+                movdqu xmm6, [rsp + 96]
+                movdqu xmm7, [rsp + 112]
 
                 mov rsp, rbp
-                pop rbp
+                pop rbp   
 
+                mov r14, rax            ; сохраняем возвращаемое значение MyPrintf
+                pop r15                 ; сохраняем адрес возврата функции MyPrintf 
+
+                call printf 
+
+                mov rax, r14
+                push r15
                 ret
 
 ;-----------------------------------------------------------------------
@@ -469,16 +492,16 @@ section .data
 buffer          db 512 dup(0)
 
 jump_table:
-    times ('b' - 0)             dq default_case                          ;0 - 'b'
+    times ('b' - 0)             dq default_case                     ;0 - 'b'
                                 dq BinSpecifier                     ;b
                                 dq CharSpecifier                    ;c
                                 dq DecSpecifier                     ;d
-                                dq default_case                          ;e - skip
+                                dq default_case                     ;e - skip
                                 dq DoubleSpecifier                  ;f
-    times ('o' - 'f' - 1)       dq default_case                          ; skip между f и o
+    times ('o' - 'f' - 1)       dq default_case                     ; skip между f и o
                                 dq OctSpecifier                     ; o
-    times ('s' - 'o' - 1)       dq default_case                          ;skip между o и s
+    times ('s' - 'o' - 1)       dq default_case                     ;skip между o и s
                                 dq StringSpecifier                  ;s
-    times ('x' - 's' - 1)       dq default_case                          ; skip между x и s
+    times ('x' - 's' - 1)       dq default_case                     ; skip между x и s
                                 dq HexSpecifier                     ;x
-    times (256 - 'x' + 1)       dq default_case                          ; все остальные возможные
+    times (256 - 'x' + 1)       dq default_case                     ; все остальные возможные
