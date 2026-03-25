@@ -11,15 +11,17 @@ oct_mask            equ (0111b)
 ;-----------------------------------------------------------------------
 MyPrintf:
                 push rbp
-                mov rbp, rsp
-                
-                push rax            ;сохраняем чтобы можно было юзать syscall
+                mov rbp, rsp              
+                                ;сохраняем чтобы можно было юзать syscall
                 push rdi
                 push rsi
                 push r10
                 push r11
                 push r12
                 push r13
+                push r14
+
+                mov r14, buffer
 
                 mov r10, rdi                ;форматная строка
                 mov r11, rsi                ;1 аргумент
@@ -42,18 +44,9 @@ MyPrintf:
                 jmp .skip_print
 .not_spec:
 
-                push rcx
-                push r11
+                mov [r14], al
 
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, r10                 ;r10 - адрес начала спецификатора
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
-
+                inc r14
                 inc r10
 
 .skip_print:
@@ -61,13 +54,22 @@ MyPrintf:
 
 .end_write_loop:
 
+                mov rax, 1              ;выводим весь буфер
+                mov rdi, 1
+                mov rsi, buffer
+                mov rdx, r14
+                sub rdx, buffer              
+                syscall
+
+                mov rax, rdx
+
+                pop r14
                 pop r13
                 pop r12
                 pop r11
                 pop r10
                 pop rsi
                 pop rdi
-                pop rax
 
                 pop rbp
 
@@ -216,19 +218,8 @@ StringSpecifier:
                 cmp al, 0
                 je .end_print_str
 
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, rdx
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
-
-                mov rdx, rsi
+                mov [r14], al
+                inc r14
 
                 inc rdx
                 jmp .print_str_loop
@@ -247,19 +238,8 @@ CharSpecifier:
 
                 call GetNextArg
 
-                push rcx
-                push r11
-
-                mov [buffer], rdx
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
+                mov [r14], rdx
+                inc r14
 
                 ret
 
@@ -306,19 +286,8 @@ HexSpecifier:
 
 .print_hex:
                 pop rax 
-                mov [buffer], al
-
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
+                mov [r14], al
+                inc r14
 
                 loop .print_hex
 
@@ -361,17 +330,8 @@ OctSpecifier:
                 pop rax 
                 mov [buffer], al
 
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
+                mov [r14], al
+                inc r14
 
                 loop .print_oct
 
@@ -393,21 +353,8 @@ DecSpecifier:
                 test rdx, rdx
                 jns .positive
 
-                mov byte [buffer], '-'
-
-                push rdx
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
-                pop rdx
+                mov byte [r14], '-'
+                inc r14
 
                 neg rdx
 
@@ -436,19 +383,9 @@ DecSpecifier:
 
 .print_dec:
                 pop rax 
-                mov [buffer], al
                 
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
+                mov [r14], al
+                inc r14
 
                 loop .print_dec
 
@@ -489,17 +426,8 @@ BinSpecifier:
                 pop rax 
                 mov [buffer], al
                 
-                push rcx
-                push r11
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
+                mov [r14], al
+                inc r14
 
                 loop .print_bin
 
@@ -515,20 +443,9 @@ BinSpecifier:
 ;-----------------------------------------------------------------------
 PercSpecifier:
 
-                push rcx
-                push r11
-
-                mov byte [buffer], '%'
-
-                mov rax, 1
-                mov rdi, 1
-                mov rsi, buffer
-                mov rdx, 1                     
-                syscall
-
-                pop r11
-                pop rcx
-
+                mov byte [r14], '%'
+                inc r14
+                
                 ret
                 
 section .data
