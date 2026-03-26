@@ -6,6 +6,8 @@ extern int MyPrintf(const char* str, ...);
 int main()
 {
 
+    MyPrintf("%x  %o  %b\n", 0xDEAD, 34535, 23);
+
     MyPrintf("%f %f %d %d %d %d %d %d %d \n", NAN, INFINITY , 1, 1, 1, 1, 1, 1, 1);
 
      MyPrintf("Test\n %s - %s\n Это число во всех СС - %f \n "

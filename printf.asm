@@ -3,8 +3,12 @@ section .text
 global MyPrintf
 extern printf
 
-oct_mask          equ (0111b)
+oct_mask          equ 0111b
+bin_mask          equ 1b
+hex_mask          equ 1111b
+
 precision         equ 1000000
+
 dbl_exp_mask      equ 0x7ff0000000000000
 dbl_mant_mask     equ 0x000fffffffffffff
 ;-----------------------------------------------------------------------
@@ -215,101 +219,6 @@ CharSpecifier:
                 ret
 
 ;-----------------------------------------------------------------------
-; Функция обработки спецификатора 16-ричного числа (%x) в printf
-; Входные данные: rcx - номер аргумента для вывода
-; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
-;-----------------------------------------------------------------------
-HexSpecifier:
-
-                call GetNextArg
-
-                push rcx
-                xor rcx, rcx
-
-.parse_hex_loop:
-                xor rax, rax
-                mov al, dl
-                and al, 0fh
-
-                cmp rax, 0ah
-                jae .parse_verb
-
-                add rax, '0'
-                jmp .end_parse_digit
-
-.parse_verb:
-                add rax, 'A' - 10
-
-.end_parse_digit:
-
-                push rax
-                inc rcx
-                shr rdx, 4
-
-                cmp rdx, 0h
-                je .end_hex_loop
-
-                jmp .parse_hex_loop
-
-.end_hex_loop:
-
-
-.print_hex:
-                pop rax 
-                mov [r14], al
-                inc r14
-
-                loop .print_hex
-
-                pop rcx
-
-                ret
-
-;-----------------------------------------------------------------------
-; Функция обработки спецификатора восьмиричного числа (%o) в printf
-; Входные данные: rcx - номер аргумента для вывода
-; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
-;-----------------------------------------------------------------------
-OctSpecifier:
-
-                call GetNextArg
-
-                push rcx
-                xor rcx, rcx
-
-.parse_oct:
-                xor rax, rax
-
-                mov al, dl
-                and al, oct_mask
-                add rax, '0'
-                push rax
-                inc rcx
-
-                shr rdx, 3
-
-                cmp rdx, 0h
-                je .end_parse_oct
-
-                jmp .parse_oct
-
-.end_parse_oct:
-
-.print_oct:
-                pop rax 
-
-                mov [r14], al
-                inc r14
-
-                loop .print_oct
-
-                pop rcx
-
-                ret
-
-;-----------------------------------------------------------------------
 ; Функция обработки спецификатора десятичного числа (%d) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
@@ -330,47 +239,6 @@ DecSpecifier:
 
 .positive:
                 call ParseInDec
-
-                ret
-
-;-----------------------------------------------------------------------
-; Функция обработки спецификатора двоичного числа (%b) в printf
-; Входные данные: rcx - номер аргумента для вывода
-; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
-;-----------------------------------------------------------------------
-BinSpecifier:
-
-                call GetNextArg
-
-                push rcx
-                xor rcx, rcx
-
-.parse_bin:
-                mov rax, rdx
-                and rax, 1b
-                add rax, '0'
-                push rax
-                inc rcx
-
-                shr rdx, 1
-
-                cmp rdx, 0h
-                je .end_parse_bin
-
-                jmp .parse_bin
-
-.end_parse_bin:
-
-.print_bin:
-                pop rax 
-                
-                mov [r14], al
-                inc r14
-
-                loop .print_bin
-
-                pop rcx
 
                 ret
 
@@ -513,22 +381,95 @@ PercSpecifier:
                 inc r14
                 
                 ret
+
+;-----------------------------------------------------------------------
+; Функция обработки спецификатора символа (%x, %o, %b) в printf
+; Входные данные: al - символ спецификатора
+; Выходные данные: -
+; Портит: rax, rdi, rsi
+;-----------------------------------------------------------------------
+BinOctHexSpecifier:
+
+                call GetNextArg
+
+                push rcx
+                xor rcx, rcx
+                xor rbx, rbx
+
+                cmp al, 'b'
+                jne .not_bin
+                mov al, 1
+                mov bl, bin_mask
+                jmp .parse_loop
+.not_bin:
+                cmp al, 'o'
+                jne .not_oct
+                mov al, 3
+                mov bl, oct_mask
+                jmp .parse_loop
+.not_oct:
+                mov al, 4
+                mov bl, hex_mask
+                jmp .parse_loop
+
+.parse_loop:
+                mov rdi, rdx
+                and rdi, rbx
+
+                cmp rdi, 0ah
+                jae .parse_verb
+
+                add rdi, '0'
+                jmp .end_parse_digit
+
+.parse_verb:
+                add rdi, 'A' - 10
+
+.end_parse_digit:
+
+                push rdi
+                inc rcx
+
+                push rcx
+                mov cl, al
+                shr rdx, cl
+                pop rcx
+
+                cmp rdx, 0h
+                je .end_loop
+
+                jmp .parse_loop
+
+.end_loop:
+
+.print:
+                pop rdi
+                mov [r14], rdi
+                inc r14
+
+                loop .print
+
+                pop rcx
+
+                ret
                 
 section .data
 
 buffer          db 512 dup(0)
 
 jump_table:
-    times ('b' - 0)             dq default_case                     ;0 - 'b'
-                                dq BinSpecifier                     ;b
+    times ('%' - 0)             dq default_case                     ;skip 0 - 'b'
+                                dq PercSpecifier                    ;
+    times ('b' - '%' - 1)       dq default_case                     ; skip '%' - 'b'
+                                dq BinOctHexSpecifier               ;b
                                 dq CharSpecifier                    ;c
                                 dq DecSpecifier                     ;d
                                 dq default_case                     ;e - skip
                                 dq DoubleSpecifier                  ;f
-    times ('o' - 'f' - 1)       dq default_case                     ; skip между f и o
-                                dq OctSpecifier                     ; o
-    times ('s' - 'o' - 1)       dq default_case                     ;skip между o и s
+    times ('o' - 'f' - 1)       dq default_case                     ; skip f - o
+                                dq BinOctHexSpecifier               ; o
+    times ('s' - 'o' - 1)       dq default_case                     ;skip o - s
                                 dq StringSpecifier                  ;s
-    times ('x' - 's' - 1)       dq default_case                     ; skip между x и s
-                                dq HexSpecifier                     ;x
+    times ('x' - 's' - 1)       dq default_case                     ; skip x - s
+                                dq BinOctHexSpecifier               ;x
     times (256 - 'x' + 1)       dq default_case                     ; все остальные возможные
