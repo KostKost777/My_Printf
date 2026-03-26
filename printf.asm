@@ -11,11 +11,14 @@ precision         equ 1000000
 
 dbl_exp_mask      equ 0x7ff0000000000000
 dbl_mant_mask     equ 0x000fffffffffffff
+
 ;-----------------------------------------------------------------------
 ; Моя функция printf, принимает аргументы по стандарту System V
 ; Входные данные:  rdi, rsi, rdx, rcx, r8, r9, +стек
-; Выходные данные: -
-; Портит: r10, rcx
+;                  xmm0 - xmm7, в них лежат первые 8 аргументов типа float и double
+;                               остальные на стеке
+; Выходные данные: rax - количество выведенных символов
+; Изменяет: r8, r9, r10, r12, r13, r14, r15, rax
 ;-----------------------------------------------------------------------
 MyPrintf:
                 push rbp
@@ -44,7 +47,7 @@ MyPrintf:
 
                 mov r10, rdi            ; форматная строка 
 
-                mov r14, buffer         ;адрес буфера вывода
+                lea r14, buffer         ;адрес буфера вывода
 
                 xor r12, r12            ;порядковый номер не стековых аргументов типа float
                 xor r13, r13            ;порядковый номер не стековых аргументов всех типов кроме float
@@ -73,9 +76,9 @@ MyPrintf:
 
                 mov rax, 1              ;выводим весь буфер
                 mov rdi, 1
-                mov rsi, buffer
+                lea rsi, buffer
                 mov rdx, r14
-                sub rdx, buffer              
+                sub rdx, rsi            
                 syscall
 
                 mov rax, rdx
@@ -106,6 +109,7 @@ MyPrintf:
 
                 mov rax, r14
                 push r15
+
                 ret
 
 ;-----------------------------------------------------------------------
@@ -113,7 +117,7 @@ MyPrintf:
 ; Входные данные: rcx - порядковый номер элемента
 ;                 al  - символ спецификатора
 ; Выходные данные: rdx - сам аргумент
-; Портит: r12, r13, rcx, rdx
+; Изменяет: r11, r12, r13, r15, rcx, rdx
 ;-----------------------------------------------------------------------
 GetNextArg:
                 xor rdx, rdx
@@ -163,15 +167,32 @@ GetNextArg:
 ;-----------------------------------------------------------------------
 ; Функция для обработки всех спецификаторов ввода в Printf
 ; Входные данные: r10 - адрес начала спецификатора
-; Выходные данные: -
-; Портит: r10, rax
+; Выходные данные: bl - (2 ^ bl), если спецификатор был для систем счистления степени 2 -ки
+; Изменяет: r10, rax, rbx
 ;-----------------------------------------------------------------------
  ChooseSpecifier:
+                xor rax, rax
                 inc r10
                 mov al, [r10]
                 inc r10
 
-                movzx rax, al
+                xor rbx, rbx
+
+                cmp al, 'b'
+                jne .not_bin
+                mov bl, 1
+                jmp .choose_func
+.not_bin:
+                cmp al, 'o'
+                jne .not_oct
+                mov bl, 3
+                jmp .choose_func
+.not_oct:
+                mov bl, 4
+                jmp .choose_func
+
+.choose_func:
+
                 jmp [jump_table + rax * 8]
 
 default_case:              
@@ -181,7 +202,7 @@ default_case:
 ; Функция обработки спецификатора строки (%s) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
+; Изменяет: rdx, rax, r14
 ;-----------------------------------------------------------------------
 StringSpecifier:
 
@@ -207,7 +228,7 @@ StringSpecifier:
 ; Функция обработки спецификатора символа (%c) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
+; Изменяет: rdx, r14
 ;-----------------------------------------------------------------------
 CharSpecifier:
 
@@ -222,7 +243,7 @@ CharSpecifier:
 ; Функция обработки спецификатора десятичного числа (%d) в printf
 ; Входные данные: rcx - номер аргумента для вывода
 ; Выходные данные: -
-; Портит: rdx, rax, rdi, rsi
+; Изменяет: rdx, rax, r14
 ;-----------------------------------------------------------------------
 DecSpecifier:
 
@@ -246,7 +267,7 @@ DecSpecifier:
 ; Функция обработки спецификатора символа (%f) в printf
 ; Входные данные: -
 ; Выходные данные: -
-; Портит: rax, rdi, rsi
+; Изменяет: rax, rdi, rdx
 ;-----------------------------------------------------------------------
 DoubleSpecifier:
                 call GetNextArg
@@ -298,34 +319,34 @@ DoubleSpecifier:
 .norm:
                 movq xmm0, rdx
                 
-                cvttsd2si rdx, xmm0
+                cvttsd2si rdx, xmm0  ; выделяем целую часть
 
-                call ParseInDec
+                call ParseInDec      ;пишем в буфер целую часть
 
                 mov byte [r14], '.'
                 inc r14
                 
                 cvtsi2sd xmm1, rdx    ; преобразуем целую часть в double
-                subsd xmm0, xmm1  
+                subsd xmm0, xmm1      ; вычитаем из всего числа целую часть, чтобы получить остаток 
 
-                mov rax, precision
-                cvtsi2sd xmm1, rax
+                mov rax, precision    ; домножаем на точность 
+                cvtsi2sd xmm1, rax    
 
                 mulsd xmm0, xmm1
-                roundsd xmm0, xmm0, 0
+                roundsd xmm0, xmm0, 0   ; округляем дробную часть
                 cvttsd2si rdx, xmm0
 
-                call ParseInDec
+                call ParseInDec         ; выводим остаток
 
                 pop rcx
 
                 ret
 ;-----------------------------------------------------------------------
-; Функция перевода из 16 ричного числа  в rdx в 10-ое и сохранение в буфер в r14
+; Функция перевода из 16 ричного числа в rdx в 10-ое и сохранение в буфер в r14
 ; Входные данные: rdx - число в 16 ричной форме
 ;                 r14 - буффер для вывода
 ; Выходные данные: -
-; Портит: -
+; Изменяет: r14
 ;-----------------------------------------------------------------------
 ParseInDec:
 
@@ -373,7 +394,7 @@ ParseInDec:
 ; Функция обработки спецификатора символа (%%) в printf
 ; Входные данные: -
 ; Выходные данные: -
-; Портит: rax, rdi, rsi
+; Изменяет: r14
 ;-----------------------------------------------------------------------
 PercSpecifier:
 
@@ -384,33 +405,23 @@ PercSpecifier:
 
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора символа (%x, %o, %b) в printf
-; Входные данные: al - символ спецификатора
+; Входные данные: bl - (2 ^ bl) - основание системы
 ; Выходные данные: -
-; Портит: rax, rdi, rsi
+; Изменяет: rax, rdi, rsi
 ;-----------------------------------------------------------------------
 BinOctHexSpecifier:
 
                 call GetNextArg
 
                 push rcx
-                xor rcx, rcx
-                xor rbx, rbx
+                
+                mov al, bl
+                mov cl, al
+                mov bl, 1b
+                shl rbx, cl
+                dec rbx
 
-                cmp al, 'b'
-                jne .not_bin
-                mov al, 1
-                mov bl, bin_mask
-                jmp .parse_loop
-.not_bin:
-                cmp al, 'o'
-                jne .not_oct
-                mov al, 3
-                mov bl, oct_mask
-                jmp .parse_loop
-.not_oct:
-                mov al, 4
-                mov bl, hex_mask
-                jmp .parse_loop
+                xor rcx, rcx
 
 .parse_loop:
                 mov rdi, rdx
@@ -439,7 +450,6 @@ BinOctHexSpecifier:
                 je .end_loop
 
                 jmp .parse_loop
-
 .end_loop:
 
 .print:
@@ -458,18 +468,19 @@ section .data
 buffer          db 512 dup(0)
 
 jump_table:
-    times ('%' - 0)             dq default_case                     ;skip 0 - 'b'
-                                dq PercSpecifier                    ;
-    times ('b' - '%' - 1)       dq default_case                     ; skip '%' - 'b'
-                                dq BinOctHexSpecifier               ;b
-                                dq CharSpecifier                    ;c
-                                dq DecSpecifier                     ;d
-                                dq default_case                     ;e - skip
-                                dq DoubleSpecifier                  ;f
-    times ('o' - 'f' - 1)       dq default_case                     ; skip f - o
-                                dq BinOctHexSpecifier               ; o
-    times ('s' - 'o' - 1)       dq default_case                     ;skip o - s
-                                dq StringSpecifier                  ;s
-    times ('x' - 's' - 1)       dq default_case                     ; skip x - s
-                                dq BinOctHexSpecifier               ;x
-    times (256 - 'x' + 1)       dq default_case                     ; все остальные возможные
+
+times ('%' - 0)             dq default_case                     ;skip 0 - 'b'
+                            dq PercSpecifier                    ;
+times ('b' - '%' - 1)       dq default_case                     ; skip '%' - 'b'
+                            dq BinOctHexSpecifier               ;b
+                            dq CharSpecifier                    ;c
+                            dq DecSpecifier                     ;d
+                            dq default_case                     ;e - skip
+                            dq DoubleSpecifier                  ;f
+times ('o' - 'f' - 1)       dq default_case                     ; skip f - o
+                            dq BinOctHexSpecifier               ; o
+times ('s' - 'o' - 1)       dq default_case                     ;skip o - s
+                            dq StringSpecifier                  ;s
+times ('x' - 's' - 1)       dq default_case                     ; skip x - s
+                            dq BinOctHexSpecifier               ;x
+times (256 - 'x' + 1)       dq default_case                     ; все остальные возможные
