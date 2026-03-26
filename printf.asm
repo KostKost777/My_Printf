@@ -47,7 +47,7 @@ MyPrintf:
 
                 mov r10, rdi            ; форматная строка 
 
-                lea r14, buffer         ;адрес буфера вывода
+                mov r14, buffer   ;адрес буфера вывода
 
                 xor r12, r12            ;порядковый номер не стековых аргументов типа float
                 xor r13, r13            ;порядковый номер не стековых аргументов всех типов кроме float
@@ -76,7 +76,7 @@ MyPrintf:
 
                 mov rax, 1              ;выводим весь буфер
                 mov rdi, 1
-                lea rsi, buffer
+                mov rsi, buffer
                 mov rdx, r14
                 sub rdx, rsi            
                 syscall
@@ -105,7 +105,7 @@ MyPrintf:
                 mov r14, rax            ; сохраняем возвращаемое значение MyPrintf
                 pop r15                 ; сохраняем адрес возврата функции MyPrintf 
 
-                call printf 
+                call printf
 
                 mov rax, r14
                 push r15
@@ -172,30 +172,45 @@ GetNextArg:
 ;-----------------------------------------------------------------------
  ChooseSpecifier:
                 xor rax, rax
+
                 inc r10
                 mov al, [r10]
                 inc r10
 
-                xor rbx, rbx
+                cmp al, '%'
+                jne .not_perc
+
+                mov byte [r14], '%'
+                inc r14
+
+                ret
+                
+.not_perc:
+                cmp al, 'x'
+                ja DefaultCase
 
                 cmp al, 'b'
-                jne .not_bin
+                jb DefaultCase
+
+                jmp [jump_table + (rax - 'b') * 8]
+                ret
+
+CaseBin:
                 mov bl, 1
-                jmp .choose_func
-.not_bin:
-                cmp al, 'o'
-                jne .not_oct
+                call BinOctHexSpecifier
+                ret
+
+CaseOct:
                 mov bl, 3
-                jmp .choose_func
-.not_oct:
+                call BinOctHexSpecifier
+                ret
+
+CaseHex:
                 mov bl, 4
-                jmp .choose_func
+                call BinOctHexSpecifier
+                ret
 
-.choose_func:
-
-                jmp [jump_table + rax * 8]
-
-default_case:              
+DefaultCase:              
                 ret
 
 ;-----------------------------------------------------------------------
@@ -295,23 +310,15 @@ DoubleSpecifier:
                 cmp r9, 0
                 jne .is_nan
 
-                mov byte [r14], 'I'
-                inc r14
-                mov byte [r14], 'N'
-                inc r14
-                mov byte [r14], 'F'
-                inc r14
+                mov dword [r14], 'INF'
+                add r14, 3
 
                 pop rcx
 
                 ret
 .is_nan:
-                mov byte [r14], 'N'
-                inc r14
-                mov byte [r14], 'A'
-                inc r14
-                mov byte [r14], 'N'
-                inc r14
+                mov dword [r14], 'NAN'
+                add r14, 3
 
                 pop rcx
                 
@@ -391,19 +398,6 @@ ParseInDec:
                 ret
 
 ;-----------------------------------------------------------------------
-; Функция обработки спецификатора символа (%%) в printf
-; Входные данные: -
-; Выходные данные: -
-; Изменяет: r14
-;-----------------------------------------------------------------------
-PercSpecifier:
-
-                mov byte [r14], '%'
-                inc r14
-                
-                ret
-
-;-----------------------------------------------------------------------
 ; Функция обработки спецификатора символа (%x, %o, %b) в printf
 ; Входные данные: bl - (2 ^ bl) - основание системы
 ; Выходные данные: -
@@ -468,19 +462,14 @@ section .data
 buffer          db 512 dup(0)
 
 jump_table:
-
-times ('%' - 0)             dq default_case                     ;skip 0 - 'b'
-                            dq PercSpecifier                    ;
-times ('b' - '%' - 1)       dq default_case                     ; skip '%' - 'b'
-                            dq BinOctHexSpecifier               ;b
-                            dq CharSpecifier                    ;c
-                            dq DecSpecifier                     ;d
-                            dq default_case                     ;e - skip
-                            dq DoubleSpecifier                  ;f
-times ('o' - 'f' - 1)       dq default_case                     ; skip f - o
-                            dq BinOctHexSpecifier               ; o
-times ('s' - 'o' - 1)       dq default_case                     ;skip o - s
-                            dq StringSpecifier                  ;s
-times ('x' - 's' - 1)       dq default_case                     ; skip x - s
-                            dq BinOctHexSpecifier               ;x
-times (256 - 'x' + 1)       dq default_case                     ; все остальные возможные
+                            dq CaseBin                         ;b
+                            dq CharSpecifier                   ;c
+                            dq DecSpecifier                    ;d
+                            dq DefaultCase                     ;e - skip
+                            dq DoubleSpecifier                 ;f
+times ('o' - 'f' - 1)       dq DefaultCase                     ; skip f - o
+                            dq CaseOct                         ; o
+times ('s' - 'o' - 1)       dq DefaultCase                     ;skip o - s
+                            dq StringSpecifier                 ;s
+times ('x' - 's' - 1)       dq DefaultCase                     ; skip x - s
+                            dq CaseHex                         ;x
