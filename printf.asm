@@ -2,6 +2,7 @@ section .text
 
 global MyPrintf
 extern printf
+default rel
 
 oct_mask          equ 0111b
 bin_mask          equ 1b
@@ -47,7 +48,7 @@ MyPrintf:
 
                 mov r10, rdi            ; форматная строка 
 
-                mov r14, buffer   ;адрес буфера вывода
+                lea r14, [buffer]         ;адрес буфера вывода
 
                 xor r12, r12            ;порядковый номер не стековых аргументов типа float
                 xor r13, r13            ;порядковый номер не стековых аргументов всех типов кроме float
@@ -76,7 +77,7 @@ MyPrintf:
 
                 mov rax, 1              ;выводим весь буфер
                 mov rdi, 1
-                mov rsi, buffer
+                lea rsi, [buffer]
                 mov rdx, r14
                 sub rdx, rsi            
                 syscall
@@ -105,7 +106,7 @@ MyPrintf:
                 mov r14, rax            ; сохраняем возвращаемое значение MyPrintf
                 pop r15                 ; сохраняем адрес возврата функции MyPrintf 
 
-                call printf
+                call printf wrt ..plt
 
                 mov rax, r14
                 push r15
@@ -172,6 +173,7 @@ GetNextArg:
 ;-----------------------------------------------------------------------
  ChooseSpecifier:
                 xor rax, rax
+                xor rbx, rbx
 
                 inc r10
                 mov al, [r10]
@@ -192,21 +194,25 @@ GetNextArg:
                 cmp al, 'b'
                 jb DefaultCase
 
-                jmp [jump_table + (rax - 'b') * 8]
+                lea r8, [jump_table]
+                jmp [r8 + (rax - 'b') * 8]
                 ret
 
 CaseBin:
                 mov bl, 1
+                mov al, bin_mask
                 call BinOctHexSpecifier
                 ret
 
 CaseOct:
                 mov bl, 3
+                mov al, oct_mask
                 call BinOctHexSpecifier
                 ret
 
 CaseHex:
                 mov bl, 4
+                mov al, hex_mask
                 call BinOctHexSpecifier
                 ret
 
@@ -400,6 +406,7 @@ ParseInDec:
 ;-----------------------------------------------------------------------
 ; Функция обработки спецификатора символа (%x, %o, %b) в printf
 ; Входные данные: bl - (2 ^ bl) - основание системы
+;                 al - маска для каждоый СС
 ; Выходные данные: -
 ; Изменяет: rax, rdi, rsi
 ;-----------------------------------------------------------------------
@@ -408,13 +415,6 @@ BinOctHexSpecifier:
                 call GetNextArg
 
                 push rcx
-                
-                mov al, bl
-                mov cl, al
-                mov bl, 1b
-                shl rbx, cl
-                dec rbx
-
                 xor rcx, rcx
 
 .parse_loop:
@@ -465,11 +465,11 @@ jump_table:
                             dq CaseBin                         ;b
                             dq CharSpecifier                   ;c
                             dq DecSpecifier                    ;d
-                            dq DefaultCase                     ;e - skip
+                            dq DefaultCase                     ;skip e
                             dq DoubleSpecifier                 ;f
-times ('o' - 'f' - 1)       dq DefaultCase                     ; skip f - o
+times ('o' - 'f' - 1)       dq DefaultCase                     ;skip f - o
                             dq CaseOct                         ; o
 times ('s' - 'o' - 1)       dq DefaultCase                     ;skip o - s
                             dq StringSpecifier                 ;s
-times ('x' - 's' - 1)       dq DefaultCase                     ; skip x - s
+times ('x' - 's' - 1)       dq DefaultCase                     ;skip x - s
                             dq CaseHex                         ;x
