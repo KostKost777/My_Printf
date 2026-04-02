@@ -2,6 +2,7 @@ section .text
 
 global MyPrintf
 extern printf
+extern fflush
 default rel
 
 oct_mask          equ 0111b
@@ -107,6 +108,8 @@ MyPrintf:
                 pop r15                 ; сохраняем адрес возврата функции MyPrintf 
 
                 call printf wrt ..plt
+                ;mov rdi, 0
+                ;call fflush wrt ..plt 
 
                 mov rax, r14
                 push r15
