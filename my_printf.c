@@ -5,7 +5,7 @@ extern int MyPrintf(const char* str, ...);
 
 int main()
 {
-    // MyPrintf("%b  %o  %x\n", 211, 21313123, 213132);
+     MyPrintf("%b  %o  %x\n", 211, 21313123, 213132);
 
     MyPrintf("%f %f %d %d %d %d %d %d %d\n", NAN, INFINITY , 1, 1, 1, 1, 1, 1, 1);
     

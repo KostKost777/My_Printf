@@ -3,3 +3,4 @@ dbg/
 my_printf
 my_printf.asm
 .gdb_history
+*.out
